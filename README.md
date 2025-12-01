@@ -1,6 +1,16 @@
 # Wav2Lip Enhanced
 
+> **Note:** This project is still under active development. There are a few quirks to be fixed, but the final goal is to provide seamless, high-quality lip-synced video generation with native Apple Silicon support and enhanced face restoration.
+
 An enhanced fork of [Wav2Lip](https://github.com/Rudrabha/Wav2Lip) with **Apple Silicon (MPS) support**, **GFPGAN face enhancement**, and **improved blending** for higher quality lip-synced videos.
+
+## Sample Output
+
+| Input Image | Output Video |
+|:-----------:|:------------:|
+| ![Input](samples/sample_1/input_image.jpeg) | [View Output Video](samples/sample_1/output.mp4) |
+
+*Generated from a static image + audio using this enhanced Wav2Lip pipeline.*
 
 ## What's New in This Fork
 
