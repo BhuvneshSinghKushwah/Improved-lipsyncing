@@ -8,9 +8,11 @@ An enhanced fork of [Wav2Lip](https://github.com/Rudrabha/Wav2Lip) with **Apple 
 
 | Input Image | Output Video |
 |:-----------:|:------------:|
-| ![Input](samples/sample_1/input_image.jpeg) | [View Output Video](samples/sample_1/output.mp4) |
+| <img src="samples/sample_1/input_image.jpeg" width="300"> | <video src="https://github.com/user-attachments/assets/samples/sample_1/output.mp4" width="300"> |
 
 *Generated from a static image + audio using this enhanced Wav2Lip pipeline.*
+
+> After you push, replace the video `src` with the actual GitHub-hosted URL, or drag-drop the video into a GitHub issue/PR to get an embeddable link.
 
 ## What's New in This Fork
 
