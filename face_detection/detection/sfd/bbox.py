@@ -44,6 +44,8 @@ def bboxloginv(dx, dy, dw, dh, axc, ayc, aww, ahh):
 def nms(dets, thresh):
     if 0 == len(dets):
         return []
+    # Use float64 to avoid overflow
+    dets = dets.astype(np.float64)
     x1, y1, x2, y2, scores = dets[:, 0], dets[:, 1], dets[:, 2], dets[:, 3], dets[:, 4]
     areas = (x2 - x1 + 1) * (y2 - y1 + 1)
     order = scores.argsort()[::-1]
@@ -56,7 +58,7 @@ def nms(dets, thresh):
         xx2, yy2 = np.minimum(x2[i], x2[order[1:]]), np.minimum(y2[i], y2[order[1:]])
 
         w, h = np.maximum(0.0, xx2 - xx1 + 1), np.maximum(0.0, yy2 - yy1 + 1)
-        ovr = w * h / (areas[i] + areas[order[1:]] - w * h)
+        ovr = w * h / (areas[i] + areas[order[1:]] - w * h + 1e-10)
 
         inds = np.where(ovr <= thresh)[0]
         order = order[inds + 1]

@@ -14,3 +14,7 @@ evaluation/test_filelists/lr*.txt
 *.gif
 *.webm
 *.mp3
+*.jpeg
+
+checkpoints/*.pt
+checkpoints/DS_Store
