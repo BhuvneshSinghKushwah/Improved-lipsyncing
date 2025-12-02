@@ -8,10 +8,10 @@ An enhanced fork of [Wav2Lip](https://github.com/Rudrabha/Wav2Lip) with **Apple 
 
 | Input Image | Enhancer | Output Video |
 |:-----------:|:--------:|:------------:|
-| <img src="samples/sample_1/input_image.jpeg" width="200"> | No Enhancement | VIDEO_URL_NO_ENHANCE |
-| <img src="samples/sample_1/input_image.jpeg" width="200"> | Real-ESRGAN x2plus | VIDEO_URL_REALESRGAN_X2 |
-| <img src="samples/sample_1/input_image.jpeg" width="200"> | Real-ESRGAN x4plus | VIDEO_URL_REALESRGAN_X4 |
-| <img src="samples/sample_1/input_image.jpeg" width="200"> | GFPGAN v1.4 | VIDEO_URL_GFPGAN |
+| ![input_image](https://github.com/user-attachments/assets/3fd131f1-7f66-49d3-b523-1de2df0e4d1c) | No Enhancement | <video src="https://github.com/user-attachments/assets/dca7cf62-54e8-44ab-8fc1-fc2a4dabf16d" width="200"></video> |
+| ![input_image](https://github.com/user-attachments/assets/3fd131f1-7f66-49d3-b523-1de2df0e4d1c) | GFPGAN v1.4 | <video src="https://github.com/user-attachments/assets/4d2d89ae-d9ef-4da7-930f-c97068367f79" width="200"></video> |
+| ![input_image](https://github.com/user-attachments/assets/3fd131f1-7f66-49d3-b523-1de2df0e4d1c) | Real-ESRGAN x2plus | <video src="https://github.com/user-attachments/assets/a8800b4f-4006-4848-9dce-c417fe2b1878" width="200"></video> |
+| ![input_image](https://github.com/user-attachments/assets/3fd131f1-7f66-49d3-b523-1de2df0e4d1c) | Real-ESRGAN x4plus | <video src="https://github.com/user-attachments/assets/109c8fea-8daf-4e12-b0b9-b875584766d6" width="200"></video> |
 
 ## What's New in This Fork
 
