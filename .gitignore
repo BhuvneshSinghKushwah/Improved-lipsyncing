@@ -15,6 +15,7 @@ evaluation/test_filelists/lr*.txt
 *.webm
 *.mp3
 *.jpeg
+*.pt
 
 checkpoints/*.pt
 checkpoints/DS_Store

@@ -2,29 +2,40 @@
 
 > **Note:** This project is still under active development. There are a few quirks to be fixed, but the final goal is to provide seamless, high-quality lip-synced video generation with native Apple Silicon support and enhanced face restoration.
 
-An enhanced fork of [Wav2Lip](https://github.com/Rudrabha/Wav2Lip) with **Apple Silicon (MPS) support**, **GFPGAN face enhancement**, and **improved blending** for higher quality lip-synced videos.
+An enhanced fork of [Wav2Lip](https://github.com/Rudrabha/Wav2Lip) with **Apple Silicon (MPS) support**, **Real-ESRGAN/GFPGAN face enhancement**, and **improved blending** for higher quality lip-synced videos.
 
-## Sample Output
+## Sample Outputs
 
-| Input Image | Output Video |
-|:-----------:|:------------:|
-| <img src="samples/sample_1/input_image.jpeg" width="300"> | <video src="https://github.com/user-attachments/assets/887470fb-5bdb-4d81-9fe7-4885b0388365" width="300"></video> |
-
-*Generated from a static image + audio using this enhanced Wav2Lip pipeline.*
+| Input Image | Enhancer | Output Video |
+|:-----------:|:--------:|:------------:|
+| <img src="samples/sample_1/input_image.jpeg" width="200"> | No Enhancement | VIDEO_URL_NO_ENHANCE |
+| <img src="samples/sample_1/input_image.jpeg" width="200"> | Real-ESRGAN x2plus | VIDEO_URL_REALESRGAN_X2 |
+| <img src="samples/sample_1/input_image.jpeg" width="200"> | Real-ESRGAN x4plus | VIDEO_URL_REALESRGAN_X4 |
+| <img src="samples/sample_1/input_image.jpeg" width="200"> | GFPGAN v1.4 | VIDEO_URL_GFPGAN |
 
 ## What's New in This Fork
 
+### Real-ESRGAN Face Enhancement (New!)
+- Integrated [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) as the default face enhancer
+- Cleaner textures and more natural skin detail compared to GFPGAN
+- Multiple models available:
+  - `RealESRGAN_x2plus` - Fast, good quality (default)
+  - `RealESRGAN_x4plus` - Higher quality, slower
+  - `realesr-general-x4v3` - Lightweight alternative
+- Automatic fallback to GFPGAN if Real-ESRGAN unavailable
+
 ### Apple Silicon (MPS) Support
-- Full support for Apple M1/M2/M3 chips via Metal Performance Shaders (MPS)
+- Full support for Apple M1/M2/M3/M4 chips via Metal Performance Shaders (MPS)
 - Automatic device detection (CUDA → MPS → CPU)
-- Memory optimizations for MPS to prevent OOM errors
-- Reduced default batch sizes for better stability on Mac
+- Smart chip detection with recommended batch sizes
+- `--device-info` flag to check your hardware capabilities
+- `--auto-batch` flag to automatically configure optimal batch sizes
+- MLX framework detection for future native Apple Silicon optimizations
 
 ### GFPGAN Face Enhancement
-- Integrated [GFPGAN](https://github.com/TencentARC/GFPGAN) for real-time face restoration
-- Dramatically improves visual quality of generated faces
+- Integrated [GFPGAN](https://github.com/TencentARC/GFPGAN) as alternative enhancer
 - Supports GFPGANv1.3 and GFPGANv1.4 models
-- Optional temporal blending to reduce flicker between frames
+- Use `--enhancer gfpgan` to switch from Real-ESRGAN
 
 ### Feathered Blending
 - Smooth gradient blending at mouth region edges
@@ -33,16 +44,10 @@ An enhanced fork of [Wav2Lip](https://github.com/Rudrabha/Wav2Lip) with **Apple 
 
 ### Performance Optimizations
 - Face detection interval option (skip frames and interpolate)
-- GFPGAN enhancement interval (enhance every Nth frame)
+- Enhancement interval (enhance every Nth frame)
+- Temporal blending to reduce flicker between frames
 - Singleton pattern for face detector to reduce memory usage
 - Aggressive memory cleanup between processing stages
-
-### Bug Fixes
-- Fixed `librosa.filters.mel` API for newer librosa versions
-- Fixed NaN handling in face detection
-- Fixed NMS overflow issues with float64 casting
-- Added missing torch import in SFD detector
-- Fixed `torchvision.transforms.functional_tensor` deprecation
 
 ---
 
@@ -74,21 +79,17 @@ wget "https://www.adrianbulat.com/downloads/python-fan/s3fd-619a316812.pth" -O f
 # Get from: https://github.com/Rudrabha/Wav2Lip#getting-the-weights
 ```
 
-### GFPGAN Setup (Optional but Recommended)
+### Check Your Device
 
 ```bash
-pip install gfpgan
-
-# If you encounter torchvision compatibility issues, run:
-sed -i '' 's/from torchvision.transforms.functional_tensor import rgb_to_grayscale/from torchvision.transforms.functional import rgb_to_grayscale/' \
-  .venv/lib/python*/site-packages/basicsr/data/degradations.py
+python inference.py --device-info
 ```
 
 ---
 
 ## Usage
 
-### Basic Inference
+### Basic Inference (No Enhancement)
 
 ```bash
 python inference.py \
@@ -98,7 +99,7 @@ python inference.py \
   --outfile results/output.mp4
 ```
 
-### With GFPGAN Enhancement (Best Quality)
+### With Real-ESRGAN Enhancement (Recommended)
 
 ```bash
 python inference.py \
@@ -106,8 +107,44 @@ python inference.py \
   --face input_video.mp4 \
   --audio input_audio.wav \
   --enhance \
-  --feather_amount 5 \
   --outfile results/output_enhanced.mp4
+```
+
+### With Real-ESRGAN x4plus (Best Quality)
+
+```bash
+python inference.py \
+  --checkpoint_path checkpoints/wav2lip_gan.pth \
+  --face input_video.mp4 \
+  --audio input_audio.wav \
+  --enhance \
+  --enhancer_model RealESRGAN_x4plus \
+  --outfile results/output_x4.mp4
+```
+
+### With GFPGAN Enhancement
+
+```bash
+python inference.py \
+  --checkpoint_path checkpoints/wav2lip_gan.pth \
+  --face input_video.mp4 \
+  --audio input_audio.wav \
+  --enhance \
+  --enhancer gfpgan \
+  --enhancer_model GFPGANv1.4 \
+  --outfile results/output_gfpgan.mp4
+```
+
+### Apple Silicon Optimized
+
+```bash
+python inference.py \
+  --checkpoint_path checkpoints/wav2lip_gan.pth \
+  --face input_video.mp4 \
+  --audio input_audio.wav \
+  --enhance \
+  --auto-batch \
+  --outfile results/output.mp4
 ```
 
 ### Fast Mode (For Long Videos)
@@ -125,18 +162,44 @@ python inference.py \
 
 ---
 
-## New Command Line Options
+## Command Line Options
+
+### Enhancement Options
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--enhance` | False | Enable GFPGAN face enhancement |
-| `--enhancer_model` | GFPGANv1.4 | GFPGAN model version (GFPGANv1.3 or GFPGANv1.4) |
-| `--enhance_interval` | 1 | Apply GFPGAN every N frames (higher = faster) |
+| `--enhance` | False | Enable face enhancement |
+| `--enhancer` | realesrgan | Enhancer to use: `realesrgan` or `gfpgan` |
+| `--enhancer_model` | RealESRGAN_x2plus | Model to use (see below) |
+| `--enhance_interval` | 1 | Apply enhancement every N frames |
 | `--enhance_blend` | 0.0 | Temporal blending (0.0-0.9) to reduce flicker |
+
+### Available Enhancement Models
+
+| Enhancer | Model | Quality | Speed |
+|----------|-------|---------|-------|
+| Real-ESRGAN | `RealESRGAN_x2plus` | Good | Fast |
+| Real-ESRGAN | `RealESRGAN_x4plus` | Best | Slow |
+| Real-ESRGAN | `realesr-general-x4v3` | Good | Fast |
+| GFPGAN | `GFPGANv1.4` | Good | Medium |
+| GFPGAN | `GFPGANv1.3` | Good | Medium |
+
+### Blending Options
+
+| Argument | Default | Description |
+|----------|---------|-------------|
 | `--no_feather` | False | Disable feathered blending |
-| `--feather_amount` | 3 | Edge feathering amount (higher = smoother blend) |
-| `--face_det_interval` | 1 | Face detection every N frames (higher = faster) |
-| `--face_det_batch_size` | 4 | Batch size for face detection (reduced for MPS) |
+| `--feather_amount` | 3 | Edge feathering amount |
+
+### Performance Options
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--face_det_interval` | 1 | Face detection every N frames |
+| `--face_det_batch_size` | 4 | Batch size for face detection |
+| `--wav2lip_batch_size` | 128 | Batch size for Wav2Lip |
+| `--auto-batch` | False | Auto-configure batch sizes for your device |
+| `--device-info` | False | Print device info and exit |
 
 ---
 
@@ -144,10 +207,11 @@ python inference.py \
 
 | Mode | Command Flags | Quality | Speed |
 |------|---------------|---------|-------|
-| **Best Quality** | `--enhance --feather_amount 5` | Excellent | Slow |
-| **Balanced** | `--enhance --enhance_interval 2` | Very Good | Medium |
-| **Fast** | `--enhance_interval 5 --face_det_interval 10` | Good | Fast |
-| **Original** | `--no_feather` (no --enhance) | Basic | Fastest |
+| **Best Quality** | `--enhance --enhancer_model RealESRGAN_x4plus` | Excellent | Slow |
+| **Balanced** | `--enhance` (default x2plus) | Very Good | Medium |
+| **Fast Enhanced** | `--enhance --enhance_interval 3` | Good | Fast |
+| **GFPGAN** | `--enhance --enhancer gfpgan` | Good | Medium |
+| **No Enhancement** | (no --enhance flag) | Basic | Fastest |
 
 ---
 
@@ -160,20 +224,6 @@ python inference.py \
 
 ---
 
-## Changes Summary
-
-### Modified Files
-
-- **`inference.py`** - Added GFPGAN integration, feathered blending, MPS support, memory optimizations
-- **`requirements.txt`** - Updated dependencies, added gfpgan
-- **`audio.py`** - Fixed librosa API compatibility
-- **`face_detection/api.py`** - Added NaN handling in detections
-- **`face_detection/detection/core.py`** - Added MPS device support
-- **`face_detection/detection/sfd/bbox.py`** - Fixed NMS overflow with float64
-- **`face_detection/detection/sfd/sfd_detector.py`** - Added missing torch import
-
----
-
 ## Troubleshooting
 
 ### OOM Errors on Mac (MPS)
@@ -182,10 +232,19 @@ Reduce batch sizes:
 python inference.py ... --wav2lip_batch_size 8 --face_det_batch_size 2
 ```
 
+Or use auto-batch:
+```bash
+python inference.py ... --auto-batch
+```
+
+### Real-ESRGAN Import Error
+```bash
+pip install realesrgan basicsr
+```
+
 ### GFPGAN Import Error
 If you see `ModuleNotFoundError: torchvision.transforms.functional_tensor`:
 ```bash
-# Fix the basicsr compatibility issue
 sed -i '' 's/from torchvision.transforms.functional_tensor import rgb_to_grayscale/from torchvision.transforms.functional import rgb_to_grayscale/' \
   .venv/lib/python*/site-packages/basicsr/data/degradations.py
 ```
@@ -194,6 +253,12 @@ sed -i '' 's/from torchvision.transforms.functional_tensor import rgb_to_graysca
 - Try `--pads 0 20 0 0` to include more chin area
 - Use `--resize_factor 2` for high-resolution videos
 - Use `--nosmooth` if face detection is jittery
+
+---
+
+## Author
+
+Enhanced by [Bhuvnesh Singh Kushwah](https://www.linkedin.com/in/bhuvnesh-singh-kushwah/)
 
 ---
 
@@ -215,11 +280,17 @@ This project is based on [Wav2Lip](https://github.com/Rudrabha/Wav2Lip) by Rudra
 }
 ```
 
+### Real-ESRGAN
+Face enhancement powered by [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) by Xintao Wang et al.
+
 ### GFPGAN
-Face enhancement powered by [GFPGAN](https://github.com/TencentARC/GFPGAN) by Tencent ARC Lab.
+Alternative face enhancement by [GFPGAN](https://github.com/TencentARC/GFPGAN) by Tencent ARC Lab.
 
 ### Face Detection
 Face detection from [face_alignment](https://github.com/1adrianb/face-alignment) repository.
+
+### MLX
+Apple's [MLX](https://github.com/ml-explore/mlx) framework for efficient ML on Apple Silicon.
 
 ---
 

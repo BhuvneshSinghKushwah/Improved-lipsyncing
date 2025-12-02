@@ -9,11 +9,23 @@ import torch, face_detection
 from models import Wav2Lip
 import platform
 
+# macOS device detection
+from config.device_config import get_device_info, print_device_info, get_optimal_device
+
 # GFPGAN imports (optional, for face enhancement)
 GFPGAN_AVAILABLE = False
 try:
 	from gfpgan import GFPGANer
 	GFPGAN_AVAILABLE = True
+except ImportError:
+	pass
+
+# Real-ESRGAN imports (optional, recommended for better quality)
+REAL_ESRGAN_AVAILABLE = False
+try:
+	from basicsr.archs.rrdbnet_arch import RRDBNet
+	from realesrgan import RealESRGANer
+	REAL_ESRGAN_AVAILABLE = True
 except ImportError:
 	pass
 
@@ -66,19 +78,34 @@ parser.add_argument('--feather_amount', type=int, default=3,
 					help='Amount of feathering for mouth blend (default: 3)')
 
 parser.add_argument('--enhance', default=False, action='store_true',
-					help='Apply GFPGAN face enhancement after Wav2Lip')
+					help='Apply face enhancement after Wav2Lip (uses Real-ESRGAN by default)')
 
-parser.add_argument('--enhancer_model', type=str, default='GFPGANv1.4',
-					help='GFPGAN model version: GFPGANv1.3, GFPGANv1.4 (default: GFPGANv1.4)')
+parser.add_argument('--enhancer', type=str, default='realesrgan',
+					choices=['realesrgan', 'gfpgan'],
+					help='Face enhancer to use: realesrgan (recommended) or gfpgan (default: realesrgan)')
+
+parser.add_argument('--enhancer_model', type=str, default='RealESRGAN_x2plus',
+					help='Enhancement model. Real-ESRGAN: RealESRGAN_x2plus, RealESRGAN_x4plus, realesr-general-x4v3. GFPGAN: GFPGANv1.3, GFPGANv1.4')
 
 parser.add_argument('--enhance_interval', type=int, default=1,
-					help='Apply GFPGAN enhancement every N frames (default: 1 = every frame). Higher values = faster but lower quality.')
+					help='Apply enhancement every N frames (default: 1 = every frame). Higher values = faster but lower quality.')
 
 parser.add_argument('--enhance_blend', type=float, default=0.0,
-					help='Temporal blending for GFPGAN (0.0-0.9). Higher = smoother but more blur. Try 0.3-0.5 to reduce flicker.')
+					help='Temporal blending for enhancement (0.0-0.9). Higher = smoother but more blur. Try 0.3-0.5 to reduce flicker.')
 
 parser.add_argument('--face_det_interval', type=int, default=1,
 					help='Run face detection every N frames and interpolate (default: 1 = every frame). Higher values = much faster face detection.')
+
+parser.add_argument('--device-info', action='store_true',
+					help='Print device information and exit')
+
+parser.add_argument('--auto-batch', action='store_true',
+					help='Automatically set batch sizes based on device capabilities (recommended for Apple Silicon)')
+
+# Handle --device-info early (before required args check)
+if '--device-info' in sys.argv:
+	print_device_info()
+	sys.exit(0)
 
 args = parser.parse_args()
 args.img_size = 96
@@ -172,6 +199,66 @@ def enhance_frame_gfpgan(frame, restorer):
 		only_center_face=True,
 		paste_back=True
 	)
+	return output
+
+def load_real_esrgan_enhancer(model_name='RealESRGAN_x2plus', device='cuda'):
+	"""Load Real-ESRGAN face enhancer model."""
+	if not REAL_ESRGAN_AVAILABLE:
+		raise ImportError("Real-ESRGAN not installed. Run: pip install realesrgan basicsr")
+
+	# Model configurations
+	models = {
+		'RealESRGAN_x2plus': {
+			'scale': 2,
+			'model_path': 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth',
+			'num_block': 23,
+		},
+		'RealESRGAN_x4plus': {
+			'scale': 4,
+			'model_path': 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth',
+			'num_block': 23,
+		},
+		'realesr-general-x4v3': {
+			'scale': 4,
+			'model_path': 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth',
+			'num_block': 6,
+		},
+	}
+
+	config = models.get(model_name, models['RealESRGAN_x2plus'])
+
+	# Create the model architecture
+	model = RRDBNet(
+		num_in_ch=3,
+		num_out_ch=3,
+		num_feat=64,
+		num_block=config['num_block'],
+		num_grow_ch=32,
+		scale=config['scale']
+	)
+
+	# Initialize RealESRGANer
+	upsampler = RealESRGANer(
+		scale=config['scale'],
+		model_path=config['model_path'],
+		model=model,
+		tile=0,  # No tiling for video frames (faster)
+		tile_pad=10,
+		pre_pad=0,
+		half=True if device == 'cuda' else False,
+		device=device
+	)
+
+	return upsampler
+
+def enhance_frame_real_esrgan(frame, upsampler, target_size=None):
+	"""Enhance a single frame using Real-ESRGAN."""
+	output, _ = upsampler.enhance(frame, outscale=upsampler.scale)
+
+	# Resize back to original size if needed (Real-ESRGAN upscales)
+	if target_size is not None:
+		output = cv2.resize(output, target_size, interpolation=cv2.INTER_LANCZOS4)
+
 	return output
 
 def interpolate_boxes(boxes, total_frames, detected_indices):
@@ -356,13 +443,27 @@ def datagen(frames, mels, face_det_results=None):
 		yield img_batch, mel_batch, frame_batch, coords_batch
 
 mel_step_size = 16
+
+# Device detection with Apple Silicon info
+device_info = get_device_info()
 if torch.cuda.is_available():
 	device = 'cuda'
 elif torch.backends.mps.is_available():
 	device = 'mps'
 else:
 	device = 'cpu'
+
 print('Using {} for inference.'.format(device))
+if device == 'mps':
+	print(f'  Chip: {device_info.chip_name}')
+	print(f'  GPU Cores: {device_info.gpu_cores}, Memory: {device_info.unified_memory_gb}GB')
+	print(f'  Recommended batch sizes - Wav2Lip: {device_info.recommended_wav2lip_batch_size}, Face Det: {device_info.recommended_face_det_batch_size}')
+
+# Auto-configure batch sizes based on device if requested
+if args.auto_batch and device_info.has_mps:
+	args.wav2lip_batch_size = device_info.recommended_wav2lip_batch_size
+	args.face_det_batch_size = device_info.recommended_face_det_batch_size
+	print(f'Auto-configured batch sizes: wav2lip={args.wav2lip_batch_size}, face_det={args.face_det_batch_size}')
 
 # Global face detector (created once, reused)
 _face_detector = None
@@ -506,16 +607,32 @@ def main():
 	# Now create the generator with pre-computed face detection results
 	gen = datagen(full_frames.copy(), mel_chunks, face_det_results=face_det_results)
 
-	# Load GFPGAN enhancer if requested (after face detection is done)
-	gfpgan_restorer = None
+	# Load face enhancer if requested (after face detection is done)
+	enhancer = None
+	enhancer_type = None
 	if args.enhance:
-		if not GFPGAN_AVAILABLE:
-			print("WARNING: GFPGAN not installed. Run: pip install gfpgan")
-			print("Continuing without enhancement...")
-		else:
-			print("Loading GFPGAN enhancer...")
-			gfpgan_restorer = load_gfpgan_enhancer(args.enhancer_model, device)
-			print("GFPGAN loaded successfully")
+		if args.enhancer == 'realesrgan':
+			if not REAL_ESRGAN_AVAILABLE:
+				print("WARNING: Real-ESRGAN not installed. Run: pip install realesrgan basicsr")
+				print("Trying GFPGAN as fallback...")
+				args.enhancer = 'gfpgan'
+			else:
+				print(f"Loading Real-ESRGAN enhancer ({args.enhancer_model})...")
+				enhancer = load_real_esrgan_enhancer(args.enhancer_model, device)
+				enhancer_type = 'realesrgan'
+				print("Real-ESRGAN loaded successfully")
+
+		if args.enhancer == 'gfpgan' and enhancer is None:
+			if not GFPGAN_AVAILABLE:
+				print("WARNING: GFPGAN not installed. Run: pip install gfpgan")
+				print("Continuing without enhancement...")
+			else:
+				# Auto-select GFPGAN model if Real-ESRGAN model was specified
+				gfpgan_model = args.enhancer_model if args.enhancer_model.startswith('GFPGAN') else 'GFPGANv1.4'
+				print(f"Loading GFPGAN enhancer ({gfpgan_model})...")
+				enhancer = load_gfpgan_enhancer(gfpgan_model, device)
+				enhancer_type = 'gfpgan'
+				print("GFPGAN loaded successfully")
 
 	# Determine blending mode
 	use_feather = not args.no_feather
@@ -524,10 +641,10 @@ def main():
 	else:
 		print("Using hard paste (no feathering)")
 
-	if gfpgan_restorer is not None and args.enhance_interval > 1:
-		print(f"GFPGAN enhancement: every {args.enhance_interval} frames (faster mode)")
-	if gfpgan_restorer is not None and args.enhance_blend > 0:
-		print(f"GFPGAN temporal blending: {args.enhance_blend} (reduces flicker)")
+	if enhancer is not None and args.enhance_interval > 1:
+		print(f"Enhancement: every {args.enhance_interval} frames (faster mode)")
+	if enhancer is not None and args.enhance_blend > 0:
+		print(f"Temporal blending: {args.enhance_blend} (reduces flicker)")
 
 	frame_count = 0  # Global frame counter for enhance_interval
 	enhanced_count = 0  # Count of enhanced frames
@@ -561,10 +678,14 @@ def main():
 				p = cv2.resize(p.astype(np.uint8), (x2 - x1, y2 - y1))
 				f[y1:y2, x1:x2] = p
 
-			# Apply GFPGAN enhancement if enabled (respecting enhance_interval)
-			if gfpgan_restorer is not None and (frame_count % args.enhance_interval == 0):
+			# Apply face enhancement if enabled (respecting enhance_interval)
+			if enhancer is not None and (frame_count % args.enhance_interval == 0):
 				try:
-					enhanced = enhance_frame_gfpgan(f, gfpgan_restorer)
+					original_size = (f.shape[1], f.shape[0])
+					if enhancer_type == 'realesrgan':
+						enhanced = enhance_frame_real_esrgan(f, enhancer, target_size=original_size)
+					else:
+						enhanced = enhance_frame_gfpgan(f, enhancer)
 
 					# Apply temporal blending to reduce flicker
 					if args.enhance_blend > 0 and prev_enhanced_frame is not None:
@@ -578,14 +699,17 @@ def main():
 					prev_enhanced_frame = enhanced.copy()
 					f = enhanced
 					enhanced_count += 1
-				except Exception:
+				except Exception as e:
+					if frame_count == 0:
+						print(f"Enhancement error: {e}")
 					pass  # Skip enhancement on error, use original frame
 
 			frame_count += 1
 			out.write(f)
 
-	if gfpgan_restorer is not None:
-		print(f"Enhanced {enhanced_count}/{frame_count} frames with GFPGAN")
+	if enhancer is not None:
+		enhancer_name = 'Real-ESRGAN' if enhancer_type == 'realesrgan' else 'GFPGAN'
+		print(f"Enhanced {enhanced_count}/{frame_count} frames with {enhancer_name}")
 
 	out.release()
 
