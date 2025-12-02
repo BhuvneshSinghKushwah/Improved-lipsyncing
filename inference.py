@@ -29,6 +29,20 @@ try:
 except ImportError:
 	pass
 
+# Diffusion imports (optional, for mouth refinement)
+DIFFUSION_AVAILABLE = False
+try:
+	from diffusion_enhance import (
+		DIFFUSION_AVAILABLE as _DIFF_AVAIL,
+		load_diffusion_enhancer,
+		enhance_frame_diffusion,
+		enhance_frame_sr3,
+		get_diffusion_models_info
+	)
+	DIFFUSION_AVAILABLE = _DIFF_AVAIL
+except ImportError:
+	pass
+
 parser = argparse.ArgumentParser(description='Inference code to lip-sync videos in the wild using Wav2Lip models')
 
 parser.add_argument('--checkpoint_path', type=str, 
@@ -92,6 +106,23 @@ parser.add_argument('--enhance_interval', type=int, default=1,
 
 parser.add_argument('--enhance_blend', type=float, default=0.0,
 					help='Temporal blending for enhancement (0.0-0.9). Higher = smoother but more blur. Try 0.3-0.5 to reduce flicker.')
+
+# Diffusion enhancement options
+parser.add_argument('--diffusion', default=False, action='store_true',
+					help='Apply Stable Diffusion inpainting to refine mouth region (slow but high quality)')
+
+parser.add_argument('--diffusion_model', type=str, default='sdxl',
+					choices=['sdxl', 'sd15', 'sr3'],
+					help='Diffusion model: sdxl (best quality), sd15 (faster), or sr3 (super-resolution)')
+
+parser.add_argument('--diffusion_strength', type=float, default=0.5,
+					help='Diffusion refinement strength (0.0-1.0). Higher = more change. Default: 0.5')
+
+parser.add_argument('--diffusion_steps', type=int, default=25,
+					help='Diffusion inference steps (10-50). Higher = better quality but slower. Default: 25')
+
+parser.add_argument('--diffusion_interval', type=int, default=1,
+					help='Apply diffusion every N frames. Default=1 (every frame). Higher = faster.')
 
 parser.add_argument('--face_det_interval', type=int, default=1,
 					help='Run face detection every N frames and interpolate (default: 1 = every frame). Higher values = much faster face detection.')
@@ -646,8 +677,24 @@ def main():
 	if enhancer is not None and args.enhance_blend > 0:
 		print(f"Temporal blending: {args.enhance_blend} (reduces flicker)")
 
+	# Load diffusion pipeline if requested
+	diffusion_pipe = None
+	diffusion_model_type = None
+	if args.diffusion:
+		if not DIFFUSION_AVAILABLE:
+			print("WARNING: Diffusion not available. Install with: pip install diffusers transformers accelerate")
+			print("Continuing without diffusion enhancement...")
+		else:
+			print(f"Loading diffusion model ({args.diffusion_model})...")
+			diffusion_pipe, diffusion_model_type = load_diffusion_enhancer(args.diffusion_model, device)
+			if diffusion_pipe is not None:
+				print(f"Diffusion settings: strength={args.diffusion_strength}, steps={args.diffusion_steps}")
+				if args.diffusion_interval > 1:
+					print(f"Diffusion interval: every {args.diffusion_interval} frames")
+
 	frame_count = 0  # Global frame counter for enhance_interval
 	enhanced_count = 0  # Count of enhanced frames
+	diffusion_count = 0  # Count of diffusion-enhanced frames
 	prev_enhanced_frame = None  # For temporal blending
 
 	for i, (img_batch, mel_batch, frames, coords) in enumerate(tqdm(gen,
@@ -704,12 +751,41 @@ def main():
 						print(f"Enhancement error: {e}")
 					pass  # Skip enhancement on error, use original frame
 
+			# Apply diffusion refinement if enabled (respecting diffusion_interval)
+			if diffusion_pipe is not None and (frame_count % args.diffusion_interval == 0):
+				try:
+					if diffusion_model_type == 'super_resolution':
+						# Use SR3 super-resolution
+						f = enhance_frame_sr3(
+							frame=f,
+							pipe=diffusion_pipe,
+							face_coords=c,
+							steps=args.diffusion_steps
+						)
+					else:
+						# Use inpainting (sdxl, sd15)
+						f = enhance_frame_diffusion(
+							frame=f,
+							pipe=diffusion_pipe,
+							face_coords=c,
+							strength=args.diffusion_strength,
+							steps=args.diffusion_steps
+						)
+					diffusion_count += 1
+				except Exception as e:
+					if diffusion_count == 0:
+						print(f"Diffusion error: {e}")
+					pass  # Skip diffusion on error, use previous frame
+
 			frame_count += 1
 			out.write(f)
 
 	if enhancer is not None:
 		enhancer_name = 'Real-ESRGAN' if enhancer_type == 'realesrgan' else 'GFPGAN'
 		print(f"Enhanced {enhanced_count}/{frame_count} frames with {enhancer_name}")
+
+	if diffusion_pipe is not None:
+		print(f"Diffusion refined {diffusion_count}/{frame_count} frames")
 
 	out.release()
 

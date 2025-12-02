@@ -2,7 +2,7 @@
 
 > **Note:** This project is still under active development. There are a few quirks to be fixed, but the final goal is to provide seamless, high-quality lip-synced video generation with native Apple Silicon support and enhanced face restoration.
 
-An enhanced fork of [Wav2Lip](https://github.com/Rudrabha/Wav2Lip) with **Apple Silicon (MPS) support**, **Real-ESRGAN/GFPGAN face enhancement**, and **improved blending** for higher quality lip-synced videos.
+An enhanced fork of [Wav2Lip](https://github.com/Rudrabha/Wav2Lip) with **Apple Silicon (MPS) support**, **Real-ESRGAN/GFPGAN face enhancement**, **Stable Diffusion mouth refinement**, and **improved blending** for higher quality lip-synced videos.
 
 ## Sample Outputs
 
@@ -12,10 +12,13 @@ An enhanced fork of [Wav2Lip](https://github.com/Rudrabha/Wav2Lip) with **Apple 
 | ![input_image](https://github.com/user-attachments/assets/3fd131f1-7f66-49d3-b523-1de2df0e4d1c) | GFPGAN v1.4 | <video src="https://github.com/user-attachments/assets/4d2d89ae-d9ef-4da7-930f-c97068367f79" width="200"></video> |
 | ![input_image](https://github.com/user-attachments/assets/3fd131f1-7f66-49d3-b523-1de2df0e4d1c) | Real-ESRGAN x2plus | <video src="https://github.com/user-attachments/assets/a8800b4f-4006-4848-9dce-c417fe2b1878" width="200"></video> |
 | ![input_image](https://github.com/user-attachments/assets/3fd131f1-7f66-49d3-b523-1de2df0e4d1c) | Real-ESRGAN x4plus | <video src="https://github.com/user-attachments/assets/109c8fea-8daf-4e12-b0b9-b875584766d6" width="200"></video> |
+| ![input_image](https://github.com/user-attachments/assets/3fd131f1-7f66-49d3-b523-1de2df0e4d1c) | SDXL Inpainting | <video src="https://github.com/user-attachments/assets/c03842c0-e889-4e0a-910a-5548f35e62ee" width="200"></video> |
+| ![input_image](https://github.com/user-attachments/assets/3fd131f1-7f66-49d3-b523-1de2df0e4d1c) | SD 1.5 Inpainting | <video src="https://github.com/user-attachments/assets/8b30d9c4-6dc3-48c2-bae4-8a3966c6a36e" width="200"></video> |
+| ![input_image](https://github.com/user-attachments/assets/3fd131f1-7f66-49d3-b523-1de2df0e4d1c) | SR3 Super-Resolution | <video src="https://github.com/user-attachments/assets/648442d6-162e-4760-9b80-0403e48e40b5" width="200"></video> |
 
 ## What's New in This Fork
 
-### Real-ESRGAN Face Enhancement (New!)
+### Real-ESRGAN Face Enhancement
 - Integrated [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) as the default face enhancer
 - Cleaner textures and more natural skin detail compared to GFPGAN
 - Multiple models available:
@@ -23,6 +26,16 @@ An enhanced fork of [Wav2Lip](https://github.com/Rudrabha/Wav2Lip) with **Apple 
   - `RealESRGAN_x4plus` - Higher quality, slower
   - `realesr-general-x4v3` - Lightweight alternative
 - Automatic fallback to GFPGAN if Real-ESRGAN unavailable
+
+### Stable Diffusion Mouth Refinement (New!)
+- Uses [Stable Diffusion](https://huggingface.co/docs/diffusers) inpainting to refine the mouth region
+- Creates natural, high-quality mouth textures after Wav2Lip processing
+- Three models available:
+  - `sdxl` - SDXL Inpainting (best quality, default)
+  - `sd15` - SD 1.5 Inpainting (faster, good quality)
+  - `sr3` - SR3-style 4x Super-Resolution (sharp details, fast)
+- Configurable strength and inference steps
+- Works alongside Real-ESRGAN: Wav2Lip → Real-ESRGAN → Diffusion
 
 ### Apple Silicon (MPS) Support
 - Full support for Apple M1/M2/M3/M4 chips via Metal Performance Shaders (MPS)
@@ -160,6 +173,59 @@ python inference.py \
   --outfile results/output_fast.mp4
 ```
 
+### With Diffusion Mouth Refinement (Best Quality)
+
+```bash
+python inference.py \
+  --checkpoint_path checkpoints/wav2lip_gan.pth \
+  --face input_video.mp4 \
+  --audio input_audio.wav \
+  --enhance \
+  --diffusion \
+  --outfile results/output_diffusion.mp4
+```
+
+### Diffusion with Custom Settings
+
+```bash
+python inference.py \
+  --checkpoint_path checkpoints/wav2lip_gan.pth \
+  --face input_video.mp4 \
+  --audio input_audio.wav \
+  --enhance \
+  --diffusion \
+  --diffusion_model sdxl \
+  --diffusion_strength 0.6 \
+  --diffusion_steps 30 \
+  --outfile results/output_diffusion_hq.mp4
+```
+
+### Faster Diffusion (SD 1.5)
+
+```bash
+python inference.py \
+  --checkpoint_path checkpoints/wav2lip_gan.pth \
+  --face input_video.mp4 \
+  --audio input_audio.wav \
+  --diffusion \
+  --diffusion_model sd15 \
+  --diffusion_steps 20 \
+  --outfile results/output_sd15.mp4
+```
+
+### SR3 Super-Resolution (Sharp Details)
+
+```bash
+python inference.py \
+  --checkpoint_path checkpoints/wav2lip_gan.pth \
+  --face input_video.mp4 \
+  --audio input_audio.wav \
+  --enhance \
+  --diffusion \
+  --diffusion_model sr3 \
+  --outfile results/output_sr3.mp4
+```
+
 ---
 
 ## Command Line Options
@@ -174,6 +240,16 @@ python inference.py \
 | `--enhance_interval` | 1 | Apply enhancement every N frames |
 | `--enhance_blend` | 0.0 | Temporal blending (0.0-0.9) to reduce flicker |
 
+### Diffusion Options
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--diffusion` | False | Enable Stable Diffusion mouth refinement |
+| `--diffusion_model` | sdxl | Model: `sdxl` (best quality), `sd15` (faster), or `sr3` (super-resolution) |
+| `--diffusion_strength` | 0.5 | Refinement strength (0.0-1.0). Higher = more change |
+| `--diffusion_steps` | 25 | Inference steps (10-50). Higher = better but slower |
+| `--diffusion_interval` | 1 | Apply diffusion every N frames |
+
 ### Available Enhancement Models
 
 | Enhancer | Model | Quality | Speed |
@@ -183,6 +259,14 @@ python inference.py \
 | Real-ESRGAN | `realesr-general-x4v3` | Good | Fast |
 | GFPGAN | `GFPGANv1.4` | Good | Medium |
 | GFPGAN | `GFPGANv1.3` | Good | Medium |
+
+### Available Diffusion Models
+
+| Model | Type | Quality | Speed |
+|-------|------|---------|-------|
+| `sdxl` | Inpainting | Best | ~15s/frame |
+| `sd15` | Inpainting | Good | ~5s/frame |
+| `sr3` | Super-Resolution | Excellent | ~3s/frame |
 
 ### Blending Options
 
@@ -207,9 +291,12 @@ python inference.py \
 
 | Mode | Command Flags | Quality | Speed |
 |------|---------------|---------|-------|
+| **Ultimate** | `--enhance --diffusion` | Best | Very Slow (~15s/frame) |
 | **Best Quality** | `--enhance --enhancer_model RealESRGAN_x4plus` | Excellent | Slow |
 | **Balanced** | `--enhance` (default x2plus) | Very Good | Medium |
 | **Fast Enhanced** | `--enhance --enhance_interval 3` | Good | Fast |
+| **SR3 Enhanced** | `--enhance --diffusion --diffusion_model sr3` | Excellent | Medium (~3s/frame) |
+| **Diffusion Only** | `--diffusion --diffusion_model sd15` | Very Good | Slow (~5s/frame) |
 | **GFPGAN** | `--enhance --enhancer gfpgan` | Good | Medium |
 | **No Enhancement** | (no --enhance flag) | Basic | Fastest |
 
@@ -249,6 +336,18 @@ sed -i '' 's/from torchvision.transforms.functional_tensor import rgb_to_graysca
   .venv/lib/python*/site-packages/basicsr/data/degradations.py
 ```
 
+### Diffusion Import Error
+```bash
+pip install diffusers transformers accelerate
+```
+
+### Diffusion OOM Errors
+If you run out of memory with diffusion:
+- Use SD 1.5 instead of SDXL: `--diffusion_model sd15`
+- Reduce steps: `--diffusion_steps 15`
+- Use diffusion interval: `--diffusion_interval 3`
+- On Apple Silicon, ensure at least 16GB unified memory for SDXL
+
 ### Face Not Detected
 - Try `--pads 0 20 0 0` to include more chin area
 - Use `--resize_factor 2` for high-resolution videos
@@ -285,6 +384,9 @@ Face enhancement powered by [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN
 
 ### GFPGAN
 Alternative face enhancement by [GFPGAN](https://github.com/TencentARC/GFPGAN) by Tencent ARC Lab.
+
+### Stable Diffusion
+Mouth refinement powered by [HuggingFace Diffusers](https://github.com/huggingface/diffusers) and [Stable Diffusion](https://stability.ai/).
 
 ### Face Detection
 Face detection from [face_alignment](https://github.com/1adrianb/face-alignment) repository.
